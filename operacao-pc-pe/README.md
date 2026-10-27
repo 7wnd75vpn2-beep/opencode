@@ -15,7 +15,7 @@ cd operacao-pc-pe
 npm install
 npm run dev        # desenvolvimento em http://localhost:5173
 npm run build      # build estático em dist/ (pode ser hospedado em qualquer servidor de arquivos)
-npm test           # testes de domínio (banco, sessão, confiança, revisão, persistência)
+npm test           # testes de domínio (banco, gabarito, sessão, confiança, revisão, persistência)
 npm run typecheck
 ```
 
@@ -35,7 +35,7 @@ npm run typecheck
 ## Estrutura
 
 ```
-src/data/questions.ts   banco autoral (30 questões, 6 disciplinas)
+src/data/questions.ts   banco autoral: 30 questões de fundamentos + src/data/banco/ (30 por disciplina) = 210
 src/domain/             tipos, validação do banco, sessão, análise, missão, armazenamento (+ testes)
 src/ui/                 telas e componentes React
 src/styles/app.css      identidade visual
@@ -48,12 +48,12 @@ status `rascunho` etc.) ficam fora das sessões; `npm run validate:bank` confere
 ## Pendências de conteúdo
 
 - As disciplinas são fundamentos usuais em provas policiais e **não foram conferidas contra o conteúdo programático do edital vigente**. Não há datas, pesos, notas de corte ou regras oficiais no app.
-- As 30 questões têm status `revisao-interna`: precisam de revisão por professor de cada disciplina antes de serem marcadas como `revisada`.
+- As 210 questões têm status `revisao-interna`: precisam de revisão por professor de cada disciplina antes de serem marcadas como `revisada`.
 - Legislação estadual de Pernambuco (Constituição Estadual, estatutos) não está coberta, por falta de verificação no texto oficial.
 
 ## Limitações antes de comercializar
 
-- Banco pequeno: com 30 questões, a revisão logo passa a repetir itens já vistos.
+- Banco ainda modesto (35 questões por disciplina): quem treina muito logo passa a rever itens já vistos.
 - Dados apenas no navegador: sem sincronização, sem backup automático, sem conta.
 - Sem revisão jurídica/pedagógica externa; sem termos de uso e política de privacidade.
 - Sem pagamento, controle de acesso ou canal real para receber as sinalizações de erro.

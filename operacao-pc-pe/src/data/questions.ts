@@ -1,4 +1,10 @@
 import type { Question } from "../domain/types"
+import { ADMINISTRATIVO } from "./banco/administrativo"
+import { CONSTITUCIONAL } from "./banco/constitucional"
+import { LOGICA } from "./banco/logica"
+import { PENAL } from "./banco/penal"
+import { PORTUGUES } from "./banco/portugues"
+import { PROCESSUAL } from "./banco/processual"
 
 /**
  * Banco demonstrativo: questões autorais de fundamentos.
@@ -10,7 +16,7 @@ export const BANK_NOTICE =
 
 const base = { cargo: "Agente de Polícia", origem: "autoral", status: "revisao-interna" } as const
 
-export const QUESTIONS: Question[] = [
+const FUNDAMENTOS: Question[] = [
   // ───────────── Língua Portuguesa ─────────────
   {
     ...base,
@@ -1042,4 +1048,14 @@ export const QUESTIONS: Question[] = [
     lembrar: "A ordem importa? Arranjo. Não importa? Combinação (divide pelas repetições de ordem).",
     referencia: "Matemática básica — análise combinatória.",
   },
+]
+
+export const QUESTIONS: Question[] = [
+  ...FUNDAMENTOS,
+  ...PORTUGUES,
+  ...CONSTITUCIONAL,
+  ...ADMINISTRATIVO,
+  ...PENAL,
+  ...PROCESSUAL,
+  ...LOGICA,
 ]

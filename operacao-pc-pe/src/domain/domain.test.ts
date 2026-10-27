@@ -68,10 +68,10 @@ class MemoryStorage implements Storage {
 }
 
 describe("banco de questões", () => {
-  test("todas as 30 questões autorais passam na validação", () => {
-    expect(QUESTIONS).toHaveLength(30)
+  test("todas as 210 questões autorais passam na validação", () => {
+    expect(QUESTIONS).toHaveLength(210)
     expect(validateBank(QUESTIONS).issues).toEqual([])
-    DISCIPLINES.forEach((discipline) => expect(BANK.filter((q) => q.disciplina === discipline).length).toBeGreaterThanOrEqual(5))
+    DISCIPLINES.forEach((discipline) => expect(BANK.filter((q) => q.disciplina === discipline)).toHaveLength(35))
   })
 
   test("questões inválidas ficam fora das sessões", () => {
@@ -93,7 +93,7 @@ describe("banco de questões", () => {
 
 describe("sessão", () => {
   test("embaralhar alternativas preserva o gabarito", () => {
-    const session = sessionWith(30, 7)
+    const session = sessionWith(BANK.length, 7)
     session.items.forEach((item, index) => {
       const q = question(session, index)
       expect([...item.order].sort()).toEqual([...LETTERS])
@@ -102,7 +102,7 @@ describe("sessão", () => {
     })
     const answered = session.items.reduce((current, _, index) => selectAnswer(current, index, question(current, index).correta), session)
     const result = finishSession({ session: answered, bank: BANK_BY_ID, now: 2_000, elapsedMs: 1_000 })
-    expect(tally(result.attempts).correct).toBe(30)
+    expect(tally(result.attempts).correct).toBe(BANK.length)
   })
 
   test("nunca repete questões e não completa a quantidade com repetidas", () => {
@@ -114,11 +114,11 @@ describe("sessão", () => {
   })
 
   test("diagnóstico equilibrado prefere questões inéditas", () => {
-    const seen = new Set(BANK.filter((q) => q.id.endsWith("-01")).map((q) => q.id))
+    // Deixa só 2 inéditas em Penal: o diagnóstico ainda deve pegar 2 por matéria, todas inéditas.
+    const seen = new Set(BANK.filter((q) => q.disciplina === "Direito Penal").slice(2).map((q) => q.id))
     const picked = pickBalanced(BANK, 12, seen, seeded(5))
     expect(new Set(picked.map((q) => q.disciplina)).size).toBe(DISCIPLINES.length)
-    const unseenAvailable = BANK.filter((q) => !seen.has(q.id)).length
-    expect(picked.filter((q) => !seen.has(q.id)).length).toBe(Math.min(12, unseenAvailable))
+    expect(picked.filter((q) => seen.has(q.id))).toEqual([])
   })
 
   test("trocar alternativa mantém só a última escolha; treino bloqueia após conferir", () => {
