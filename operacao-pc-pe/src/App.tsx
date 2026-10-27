@@ -1,4 +1,4 @@
-import { Database, Home } from "lucide-react"
+import { Database, Download, Home } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { BANK, BANK_BY_ID } from "./domain/bank"
 import { BANK_NOTICE } from "./data/questions"
@@ -36,6 +36,7 @@ export function App() {
     main.current?.focus({ preventScroll: true })
   }, [screen.name, screen.name === "answers" ? screen.index : 0])
 
+  const install = useInstallPrompt()
   const active = app.state.active
 
   function launch(request: StartRequest) {
@@ -80,6 +81,12 @@ export function App() {
           </span>
         </button>
         <nav className="topnav" aria-label="Principal">
+          {install && (
+            <button type="button" className="nav-link nav-install" onClick={install}>
+              <Download size={16} aria-hidden="true" />
+              <span>Instalar app</span>
+            </button>
+          )}
           <button type="button" className={`nav-link ${screen.name === "home" ? "is-active" : ""}`} onClick={() => setScreen({ name: "home" })}>
             <Home size={16} aria-hidden="true" />
             <span>Início</span>
@@ -201,4 +208,26 @@ function MissingNotice(props: { onHome: () => void }) {
       </button>
     </div>
   )
+}
+
+type InstallEvent = Event & { prompt: () => Promise<void> }
+
+// O navegador só oferece instalação quando o app atende aos critérios de PWA; antes disso o botão não aparece.
+function useInstallPrompt() {
+  const [event, setEvent] = useState<InstallEvent>()
+  useEffect(() => {
+    const offer = (incoming: Event) => {
+      incoming.preventDefault()
+      if ("prompt" in incoming) setEvent(incoming as InstallEvent)
+    }
+    const installed = () => setEvent(undefined)
+    window.addEventListener("beforeinstallprompt", offer)
+    window.addEventListener("appinstalled", installed)
+    return () => {
+      window.removeEventListener("beforeinstallprompt", offer)
+      window.removeEventListener("appinstalled", installed)
+    }
+  }, [])
+  if (!event) return undefined
+  return () => event.prompt().then(() => setEvent(undefined))
 }

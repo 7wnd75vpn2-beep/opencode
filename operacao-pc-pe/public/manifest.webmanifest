@@ -1,0 +1,19 @@
+{
+  "name": "Operação PC-PE — Preparação para Agente",
+  "short_name": "Operação PC-PE",
+  "description": "Simulados autorais para Agente de Polícia Civil de Pernambuco. Material independente, sem vínculo com a PC-PE ou a banca.",
+  "lang": "pt-BR",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0d12",
+  "theme_color": "#0a0d12",
+  "categories": ["education"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

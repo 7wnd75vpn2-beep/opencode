@@ -265,6 +265,11 @@ em {
   background: var(--bg-3);
 }
 
+.nav-install {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
 .nav-link.is-active {
   color: var(--text);
   border-color: var(--line-strong);
