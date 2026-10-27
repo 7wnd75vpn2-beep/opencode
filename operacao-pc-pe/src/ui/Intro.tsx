@@ -5,6 +5,7 @@ import { BOX_INTERVAL_DAYS } from "../domain/analysis"
 import { DIAGNOSTIC_SIZE, disciplinesWithQuestions, pickBalanced, SECONDS_PER_QUESTION } from "../domain/session"
 import type { Question } from "../domain/types"
 import type { BuilderMode } from "./Builder"
+import { Emblem } from "./components"
 
 export function Intro(props: { bank: Question[]; onStart: (request: StartRequest) => void; onBuild: (mode: BuilderMode) => void }) {
   const diagnosticSize = Math.min(DIAGNOSTIC_SIZE, props.bank.length)
@@ -26,7 +27,13 @@ export function Intro(props: { bank: Question[]; onStart: (request: StartRequest
     <div className="landing">
       <section className="hero shell" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <p className="eyebrow eyebrow-accent">Agente de Polícia · PC-PE · formato {EXAM.banca}</p>
+          <p className="insignia">
+            <Emblem size={30} />
+            <span>
+              <strong>Agente de Polícia Civil</strong>
+              <span>Pernambuco · formato {EXAM.banca}</span>
+            </span>
+          </p>
           <h1 id="hero-title" className="hero-headline">
             <span className="hero-muted">Você não precisa estudar tudo de novo.</span>
             <span>Precisa descobrir o que ainda está te derrubando.</span>
@@ -50,7 +57,15 @@ export function Intro(props: { bank: Question[]; onStart: (request: StartRequest
         </div>
 
         <figure className="hero-visual" aria-label="Exemplo de como uma questão aparece">
+          <Emblem size={340} className="hero-watermark" />
           <div className="mock-card">
+            <div className="mock-file" aria-hidden="true">
+              <span>Ficha de treino · Caso 23</span>
+              <span>P1 · Q. 23/60</span>
+            </div>
+            <span className="mock-stamp" aria-hidden="true">
+              Analisar
+            </span>
             <div className="mock-meta">
               <span className="mock-discipline">Direito Processual Penal</span>
               <span className="badge badge-hard">Difícil</span>
@@ -207,12 +222,16 @@ export function Intro(props: { bank: Question[]; onStart: (request: StartRequest
       </section>
 
       <section className="final-cta shell" aria-label="Começar">
+        <Emblem size={56} className="final-emblem" />
         <h2>Descubra em {minutes} minutos onde você está perdendo pontos.</h2>
         <button type="button" className="button button-primary button-lg" onClick={startDiagnostic}>
           Fazer o diagnóstico
           <ArrowRight size={18} aria-hidden="true" />
         </button>
-        <p className="fine-print">Questões autorais. Material independente, sem vínculo com a PC-PE ou o Cebraspe. Seus dados ficam neste navegador.</p>
+        <p className="fine-print">
+          Questões autorais. Material independente, sem vínculo com a PC-PE ou o Cebraspe. O escudo é a marca deste material, não um símbolo oficial da
+          Polícia Civil. Seus dados ficam neste navegador.
+        </p>
       </section>
     </div>
   )

@@ -73,7 +73,7 @@ export function Dashboard(props: {
   return (
     <div className="shell dashboard">
       <header className="page-head">
-        <p className="eyebrow">Painel</p>
+        <p className="eyebrow">Painel do agente em formação</p>
         <h1 className="page-title">Seu próximo passo</h1>
       </header>
 

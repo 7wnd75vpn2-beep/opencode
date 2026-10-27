@@ -6,7 +6,7 @@ import { createSession, finishSession, MODE_LABEL, seenQuestionIds } from "./dom
 import type { Mode, Question, Session } from "./domain/types"
 import { AnswerReview } from "./ui/AnswerReview"
 import { Builder, type BuilderMode } from "./ui/Builder"
-import { Dialog, Notice } from "./ui/components"
+import { Dialog, Emblem, Notice } from "./ui/components"
 import { Dashboard } from "./ui/Dashboard"
 import { DataView } from "./ui/DataView"
 import { Intro } from "./ui/Intro"
@@ -71,14 +71,12 @@ export function App() {
       </a>
       <header className="topbar">
         <button type="button" className="brand" onClick={() => setScreen({ name: "home" })} aria-label="Operação PC-PE — início">
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <path d="M5 17 L11 6 L19 17" />
-              <circle cx="11" cy="6" r="1.6" />
-            </svg>
-          </span>
+          <Emblem size={26} className="brand-mark" />
           <span className="brand-name">
-            Operação <strong>PC-PE</strong>
+            <span>
+              Operação <strong>PC-PE</strong>
+            </span>
+            <small>Preparação para Agente</small>
           </span>
         </button>
         <nav className="topnav" aria-label="Principal">

@@ -96,3 +96,19 @@ export function ProgressBar(props: { value: number; max: number; label: string }
 export function Eyebrow(props: { children: ReactNode }) {
   return <p className="eyebrow">{props.children}</p>
 }
+
+/** Original study-brand shield. Deliberately generic: not an official Polícia Civil emblem or brasão. */
+export function Emblem(props: { size?: number; className?: string }) {
+  const size = props.size ?? 24
+  return (
+    <svg className={`emblem ${props.className ?? ""}`} viewBox="0 0 48 56" width={size} height={(size * 56) / 48} aria-hidden="true">
+      <path className="emblem-shield" d="M24 3 L43 9 V26 C43 38.5 35 47.5 24 53 C13 47.5 5 38.5 5 26 V9 Z" />
+      <path className="emblem-inner" d="M24 8.5 L38 12.9 V26 C38 35.6 32.2 42.7 24 47.3 C15.8 42.7 10 35.6 10 26 V12.9 Z" />
+      <path
+        className="emblem-star"
+        d="M24 15 L26.23 21.93 L32.56 22.22 L27.61 26.17 L29.29 32.28 L24 28.8 L18.71 32.28 L20.39 26.17 L15.44 22.22 L21.77 21.93 Z"
+      />
+      <path className="emblem-bar" d="M16 38.5 H32" />
+    </svg>
+  )
+}
