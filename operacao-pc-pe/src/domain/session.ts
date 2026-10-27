@@ -18,6 +18,7 @@ export const MODE_LABEL: Record<Mode, string> = {
   diagnostico: "Diagnóstico",
   treino: "Treino dirigido",
   simulado: "Simulado",
+  prova: "Simulado PC-PE",
   revisao: "Revisão dos pontos fracos",
 }
 
@@ -26,9 +27,9 @@ export function correctsImmediately(mode: Mode) {
   return mode === "treino" || mode === "revisao"
 }
 
-export const DIAGNOSTIC_SIZE = 12
+export const DIAGNOSTIC_SIZE = 10
 /** Estimativa usada apenas para informar o aluno antes de começar. */
-export const SECONDS_PER_QUESTION = 75
+export const SECONDS_PER_QUESTION = 120
 
 export function shuffle<T>(values: readonly T[], random: Random = Math.random) {
   const copy = [...values]
@@ -74,6 +75,8 @@ export function createSession(input: {
   seen: Set<string>
   now: number
   random?: Random
+  /** Tempo de prova; cria um horário-limite real. */
+  limitMs?: number
 }): Session {
   const random = input.random ?? Math.random
   const unique = [...new Map(input.questions.map((question) => [question.id, question])).values()]
@@ -91,6 +94,8 @@ export function createSession(input: {
     })),
     current: 0,
     elapsedMs: 0,
+    limitMs: input.limitMs,
+    deadline: input.limitMs ? input.now + input.limitMs : undefined,
   }
 }
 
@@ -122,6 +127,25 @@ export function checkAnswer(session: Session, index: number) {
   return updateItem(session, index, (item) => (item.answer ? { ...item, checked: true } : item))
 }
 
+/** Risca ou desrisca uma alternativa, como se faz no caderno de prova. */
+export function toggleStrike(session: Session, index: number, letter: Letter) {
+  return updateItem(session, index, (item) => {
+    if (item.checked) return item
+    const struck = item.struck ?? []
+    return { ...item, struck: struck.includes(letter) ? struck.filter((entry) => entry !== letter) : [...struck, letter] }
+  })
+}
+
+/** Avança o relógio da sessão e o tempo da questão aberta. */
+export function tick(session: Session, ms: number): Session {
+  const ticked = updateItem(session, session.current, (item) => ({ ...item, timeMs: (item.timeMs ?? 0) + ms }))
+  return { ...ticked, elapsedMs: session.elapsedMs + ms }
+}
+
+export function remainingMs(session: Session, now: number) {
+  return session.deadline === undefined ? undefined : Math.max(0, session.deadline - now)
+}
+
 export function goTo(session: Session, index: number): Session {
   return { ...session, current: Math.max(0, Math.min(session.items.length - 1, index)) }
 }
@@ -135,6 +159,7 @@ export function finishSession(input: {
   bank: Map<string, Question>
   now: number
   elapsedMs: number
+  timedOut?: boolean
 }): SessionResult {
   const items = input.session.items.filter((item) => input.bank.has(item.questionId))
   return {
@@ -144,6 +169,8 @@ export function finishSession(input: {
     startedAt: input.session.createdAt,
     finishedAt: input.now,
     durationMs: input.elapsedMs,
+    timedOut: input.timedOut || undefined,
+    limitMs: input.session.limitMs,
     items,
     attempts: items.flatMap((item): Attempt[] => {
       const question = input.bank.get(item.questionId)
@@ -158,6 +185,8 @@ export function finishSession(input: {
           confidence: item.answer ? item.confidence : undefined,
           marked: item.marked,
           repeat: item.repeat,
+          dificuldade: question.dificuldade,
+          timeMs: item.timeMs,
         },
       ]
     }),

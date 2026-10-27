@@ -1,6 +1,8 @@
 import { AlertTriangle, Download, HardDrive, ShieldCheck, Trash2, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 import { BANK, BANK_ISSUES } from "../domain/bank"
+import { EXAM } from "../domain/exam"
+import { disciplinesWithQuestions } from "../domain/session"
 import { EXPORT_APP, emptyState, exportState, importState } from "../domain/storage"
 import type { AppState, Question } from "../domain/types"
 import { BANK_NOTICE } from "../data/questions"
@@ -141,19 +143,26 @@ export function DataView(props: { state: AppState; bank: Map<string, Question>; 
           </h2>
           <ul className="summary-list">
             <li>
-              Questões ativas: <strong>{BANK.length}</strong>
-            </li>
-            <li>
-              Bloqueadas pela validação: <strong>{BANK_ISSUES.length}</strong>
+              Questões ativas: <strong>{BANK.length}</strong> · bloqueadas pela validação: <strong>{BANK_ISSUES.length}</strong>
             </li>
             <li>
               Cargo: <strong>Agente de Polícia</strong> · Origem: <strong>autoral</strong> · Revisão: <strong>interna, sem revisão externa</strong>
             </li>
           </ul>
+          <table className="table table-compact">
+            <caption className="sr-only">Questões por matéria</caption>
+            <tbody>
+              {disciplinesWithQuestions(BANK).map((disciplina) => (
+                <tr key={disciplina}>
+                  <th scope="row">{disciplina}</th>
+                  <td>{BANK.filter((question) => question.disciplina === disciplina).length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <p className="muted">{BANK_NOTICE}</p>
           <p className="fine-print">
-            As disciplinas são fundamentos usuais em provas policiais e ainda não foram conferidas contra o conteúdo programático do edital vigente.
-            Datas, pesos, notas de corte e regras oficiais não são apresentados aqui.
+            {EXAM.fonte} Ainda não cobrimos: {EXAM.lacunas.join("; ")}. Notas mínimas, de corte e pesos não são estimados.
           </p>
         </section>
 

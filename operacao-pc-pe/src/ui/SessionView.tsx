@@ -1,16 +1,36 @@
-import { Bookmark, BookmarkCheck, Check, ChevronLeft, ChevronRight, Flag, LayoutGrid, LogOut, Repeat, Timer, X } from "lucide-react"
-import { useEffect, useId, useRef, useState } from "react"
+import {
+  AlarmClock,
+  Bookmark,
+  BookmarkCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  LayoutGrid,
+  LogOut,
+  Minus,
+  Plus,
+  Repeat,
+  Scissors,
+  Timer,
+  X,
+} from "lucide-react"
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react"
+import { blockOf, EXAM } from "../domain/exam"
 import {
   blankCount,
   checkAnswer,
   correctsImmediately,
   goTo,
   MODE_LABEL,
+  remainingMs,
   selectAnswer,
   setConfidence,
+  tick,
   toggleMark,
+  toggleStrike,
 } from "../domain/session"
-import { LETTERS, type Confidence, type Question, type Session } from "../domain/types"
+import { DIFFICULTY_LABEL, LETTERS, type Confidence, type Question, type Session } from "../domain/types"
 import { Dialog, formatDuration, ProgressBar } from "./components"
 import { Explanation } from "./Explanation"
 
@@ -20,11 +40,15 @@ const CONFIDENCE_OPTIONS: { value: Confidence; label: string }[] = [
   { value: "chute", label: "Foi um chute" },
 ]
 
+const FONT_STEPS = [0.9, 1, 1.12, 1.25]
+
 export function SessionView(props: {
   session: Session
   bank: Map<string, Question>
+  fontScale: number
+  onFontScale: (scale: number) => void
   onChange: (session: Session) => void
-  onFinish: (session: Session) => void
+  onFinish: (session: Session, timedOut?: boolean) => void
   onExit: () => void
 }) {
   const session = props.session
@@ -32,6 +56,9 @@ export function SessionView(props: {
   latest.current = session
   const change = useRef(props.onChange)
   change.current = props.onChange
+  const finish = useRef(props.onFinish)
+  finish.current = props.onFinish
+  const [now, setNow] = useState(() => Date.now())
   const [mapOpen, setMapOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const immediate = correctsImmediately(session.mode)
@@ -41,13 +68,21 @@ export function SessionView(props: {
   const answered = session.items.filter((entry) => entry.answer).length
   const blanks = blankCount(session)
   const last = index === session.items.length - 1
+  const remaining = remainingMs(session, now)
   const ids = { question: useId(), confidence: useId() }
 
-  // Cronômetro: soma o tempo apenas enquanto a aba está visível.
+  // Relógio: soma tempo de tela por questão; no simulado com prazo, o limite é o horário real.
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return
-      change.current({ ...latest.current, elapsedMs: latest.current.elapsedMs + 1000 })
+      const current = Date.now()
+      setNow(current)
+      const active = latest.current
+      if (active.deadline !== undefined && current >= active.deadline) {
+        window.clearInterval(timer)
+        finish.current(active, true)
+        return
+      }
+      if (document.visibilityState === "visible") change.current(tick(active, 1000))
     }, 1000)
     return () => window.clearInterval(timer)
   }, [])
@@ -57,7 +92,7 @@ export function SessionView(props: {
     function onKey(event: KeyboardEvent) {
       if (event.ctrlKey || event.metaKey || event.altKey) return
       const target = event.target
-      if (target instanceof HTMLElement && target.closest("input[type=number], input[type=text], textarea, select, dialog[open]")) return
+      if (target instanceof HTMLElement && target.closest("input[type=number], input[type=text], textarea, select")) return
       if (document.querySelector("dialog[open]")) return
       const key = event.key.toUpperCase()
       const position = LETTERS.findIndex((letter) => letter === key)
@@ -89,6 +124,13 @@ export function SessionView(props: {
     props.onFinish(session)
   }
 
+  const fontIndex = Math.max(0, FONT_STEPS.indexOf(props.fontScale))
+  const pending = session.items.length - answered
+  const pace = remaining !== undefined && pending > 0 ? remaining / pending : undefined
+  const idealPace = session.limitMs ? session.limitMs / session.items.length : undefined
+  const lowTime = remaining !== undefined && remaining < 10 * 60_000
+  const paragraphs = question.enunciado.split("\n\n")
+
   const primary = (() => {
     if (immediate && !item.checked)
       return (
@@ -99,7 +141,7 @@ export function SessionView(props: {
     if (last)
       return (
         <button type="button" className="button button-primary" onClick={requestFinish}>
-          <Flag size={18} aria-hidden="true" /> {immediate ? "Ver resultado" : "Finalizar"}
+          <Flag size={18} aria-hidden="true" /> {immediate ? "Ver resultado" : "Entregar"}
         </button>
       )
     return (
@@ -121,11 +163,42 @@ export function SessionView(props: {
             </span>
           </div>
           <div className="session-tools">
-            <span className="timer" title="Tempo de sessão">
-              <Timer size={16} aria-hidden="true" />
-              <span className="sr-only">Tempo decorrido: </span>
-              <span className="timer-value">{formatDuration(session.elapsedMs)}</span>
-            </span>
+            {remaining !== undefined ? (
+              <span className={`timer timer-countdown ${lowTime ? "is-low" : ""}`} title="Tempo restante de prova">
+                <AlarmClock size={16} aria-hidden="true" />
+                <span className="sr-only">Tempo restante: </span>
+                <span className="timer-value">{formatDuration(remaining)}</span>
+              </span>
+            ) : (
+              <span className="timer" title="Tempo de sessão">
+                <Timer size={16} aria-hidden="true" />
+                <span className="sr-only">Tempo decorrido: </span>
+                <span className="timer-value">{formatDuration(session.elapsedMs)}</span>
+              </span>
+            )}
+            <div className="font-tools" role="group" aria-label="Tamanho do texto">
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                disabled={fontIndex === 0}
+                onClick={() => props.onFontScale(FONT_STEPS[fontIndex - 1] ?? 1)}
+                aria-label="Diminuir texto"
+              >
+                <Minus size={14} aria-hidden="true" />
+              </button>
+              <span className="font-label" aria-hidden="true">
+                Aa
+              </span>
+              <button
+                type="button"
+                className="icon-button icon-button-sm"
+                disabled={fontIndex === FONT_STEPS.length - 1}
+                onClick={() => props.onFontScale(FONT_STEPS[fontIndex + 1] ?? 1)}
+                aria-label="Aumentar texto"
+              >
+                <Plus size={14} aria-hidden="true" />
+              </button>
+            </div>
             <button
               type="button"
               className="icon-button map-toggle"
@@ -146,7 +219,7 @@ export function SessionView(props: {
       </div>
 
       <div className="session-layout shell">
-        <article className="question" aria-labelledby={ids.question}>
+        <article className="question" aria-labelledby={ids.question} style={{ "--q-scale": props.fontScale } as CSSProperties}>
           {session.mode === "revisao" && (
             <p className="repeat-banner">
               <Repeat size={16} aria-hidden="true" />
@@ -154,16 +227,23 @@ export function SessionView(props: {
             </p>
           )}
           <header className="question-meta">
+            {session.mode === "prova" && <span className="badge badge-block">{blockOf(question.disciplina)}</span>}
             <span className="meta-discipline">{question.disciplina}</span>
             <span className="meta-sep" aria-hidden="true">
               /
             </span>
             <span className="meta-theme">{question.tema}</span>
-            {item.repeat && <span className="tag">já vista</span>}
+            <span className={`badge badge-${question.dificuldade}`}>{DIFFICULTY_LABEL[question.dificuldade]}</span>
+            {question.tipo === "situacao" && <span className="badge">Situação hipotética</span>}
+            {item.repeat && <span className="badge">já vista</span>}
           </header>
 
           <h1 id={ids.question} className="question-text" tabIndex={-1}>
-            {question.enunciado}
+            {paragraphs.map((paragraph, position) => (
+              <span key={position} className={`question-paragraph ${paragraphs.length > 1 && position === 0 ? "is-support" : ""}`}>
+                {paragraph}
+              </span>
+            ))}
           </h1>
 
           <fieldset className="alternatives" disabled={item.checked}>
@@ -171,6 +251,7 @@ export function SessionView(props: {
             {item.order.map((original, position) => {
               const letter = LETTERS[position]
               const selected = item.answer === original
+              const struck = item.struck?.includes(original) ?? false
               const reveal = item.checked
               const state = reveal
                 ? original === question.correta
@@ -182,31 +263,48 @@ export function SessionView(props: {
                   ? "is-selected"
                   : ""
               return (
-                <label key={original} className={`alternative ${state}`}>
-                  <input
-                    type="radio"
-                    name={`q-${item.questionId}`}
-                    checked={selected}
-                    onChange={() => props.onChange(selectAnswer(session, index, original))}
-                  />
-                  <span className="alt-letter" aria-hidden="true">
-                    {letter}
-                  </span>
-                  <span className="alt-text">
-                    <span className="sr-only">Alternativa {letter}: </span>
-                    {question.alternativas[original].text}
-                  </span>
-                  {reveal && original === question.correta && (
-                    <span className="alt-status">
-                      <Check size={16} aria-hidden="true" /> Correta
+                <div key={original} className={`alternative-row ${struck && !reveal ? "is-struck" : ""}`}>
+                  <label className={`alternative ${state}`}>
+                    <input
+                      type="radio"
+                      name={`q-${item.questionId}`}
+                      checked={selected}
+                      onChange={() => props.onChange(selectAnswer(session, index, original))}
+                    />
+                    <span className="alt-letter" aria-hidden="true">
+                      {letter}
                     </span>
-                  )}
-                  {reveal && selected && original !== question.correta && (
-                    <span className="alt-status">
-                      <X size={16} aria-hidden="true" /> Sua resposta
+                    <span className="alt-text">
+                      <span className="sr-only">
+                        Alternativa {letter}
+                        {struck ? " (riscada)" : ""}:{" "}
+                      </span>
+                      {question.alternativas[original].text}
                     </span>
+                    {reveal && original === question.correta && (
+                      <span className="alt-status">
+                        <Check size={16} aria-hidden="true" /> Correta
+                      </span>
+                    )}
+                    {reveal && selected && original !== question.correta && (
+                      <span className="alt-status">
+                        <X size={16} aria-hidden="true" /> Sua resposta
+                      </span>
+                    )}
+                  </label>
+                  {!reveal && (
+                    <button
+                      type="button"
+                      className={`strike-button ${struck ? "is-on" : ""}`}
+                      aria-pressed={struck}
+                      aria-label={`${struck ? "Desfazer risco da" : "Riscar"} alternativa ${letter}`}
+                      title={struck ? "Desfazer risco" : "Riscar alternativa"}
+                      onClick={() => props.onChange(toggleStrike(session, index, original))}
+                    >
+                      <Scissors size={16} aria-hidden="true" />
+                    </button>
                   )}
-                </label>
+                </div>
               )
             })}
           </fieldset>
@@ -267,39 +365,31 @@ export function SessionView(props: {
               {answered}/{session.items.length}
             </span>
           </div>
-          <ol className="qmap-grid">
-            {session.items.map((entry, position) => {
-              const entryQuestion = props.bank.get(entry.questionId)
-              const verdict = entry.checked && entryQuestion ? (entry.answer === entryQuestion.correta ? "certa" : "errada") : undefined
-              const status = [
-                entry.answer ? "respondida" : "em branco",
-                entry.marked ? "marcada para revisar" : "",
-                verdict ? `conferida, ${verdict}` : "",
-              ]
-                .filter(Boolean)
-                .join(", ")
-              return (
-                <li key={entry.questionId}>
-                  <button
-                    type="button"
-                    className={[
-                      "qmap-cell",
-                      entry.answer ? "is-answered" : "",
-                      entry.marked ? "is-marked" : "",
-                      position === index ? "is-current" : "",
-                      verdict === "certa" ? "is-right" : "",
-                      verdict === "errada" ? "is-miss" : "",
-                    ].join(" ")}
-                    aria-current={position === index ? "step" : undefined}
-                    aria-label={`Questão ${position + 1}: ${status}`}
-                    onClick={() => move(position)}
-                  >
-                    {position + 1}
-                  </button>
-                </li>
-              )
-            })}
-          </ol>
+          {pace !== undefined && idealPace !== undefined && (
+            <div className={`pace ${pace < idealPace * 0.8 ? "is-behind" : ""}`}>
+              <span className="pace-label">Ritmo</span>
+              <span className="pace-value">{formatDuration(pace)} por questão restante</span>
+              <span className="pace-hint">Ideal: {formatDuration(idealPace)} por questão</span>
+            </div>
+          )}
+          {session.mode === "prova" ? (
+            EXAM.blocos.map((bloco) => (
+              <div key={bloco.id} className="qmap-block">
+                <p className="qmap-block-title">
+                  {bloco.id} · {bloco.nome}
+                </p>
+                <MapGrid
+                  session={session}
+                  bank={props.bank}
+                  current={index}
+                  only={(entryQuestion) => blockOf(entryQuestion.disciplina) === bloco.id}
+                  onMove={move}
+                />
+              </div>
+            ))
+          ) : (
+            <MapGrid session={session} bank={props.bank} current={index} onMove={move} />
+          )}
           <ul className="qmap-legend">
             <li>
               <span className="qmap-key is-answered" aria-hidden="true" /> Respondida
@@ -312,9 +402,9 @@ export function SessionView(props: {
             </li>
           </ul>
           <button type="button" className="button button-ghost button-block" onClick={requestFinish}>
-            <Flag size={16} aria-hidden="true" /> Finalizar sessão
+            <Flag size={16} aria-hidden="true" /> {immediate ? "Finalizar sessão" : "Entregar"}
           </button>
-          {!immediate && <p className="field-hint">O gabarito aparece somente depois de finalizar.</p>}
+          {!immediate && <p className="field-hint">O gabarito aparece somente depois da entrega.</p>}
         </aside>
       </div>
 
@@ -344,16 +434,57 @@ export function SessionView(props: {
               Voltar e responder
             </button>
             <button type="button" className="button button-primary" onClick={() => props.onFinish(session)}>
-              Finalizar mesmo assim
+              {immediate ? "Finalizar mesmo assim" : "Entregar mesmo assim"}
             </button>
           </>
         }
       >
         <p>
-          Você respondeu {answered} de {session.items.length}. Questões em branco contam como zero na pontuação de estudo e entram na sua próxima
-          revisão.
+          Você respondeu {answered} de {session.items.length}. Questões em branco contam como zero e entram na sua próxima revisão.
+          {session.mode === "prova" && " Na prova, como não há desconto por erro, vale a pena marcar todas."}
         </p>
       </Dialog>
     </div>
+  )
+}
+
+function MapGrid(props: {
+  session: Session
+  bank: Map<string, Question>
+  current: number
+  only?: (question: Question) => boolean
+  onMove: (index: number) => void
+}) {
+  return (
+    <ol className="qmap-grid">
+      {props.session.items.map((entry, position) => {
+        const entryQuestion = props.bank.get(entry.questionId)
+        if (!entryQuestion || (props.only && !props.only(entryQuestion))) return null
+        const verdict = entry.checked ? (entry.answer === entryQuestion.correta ? "certa" : "errada") : undefined
+        const status = [entry.answer ? "respondida" : "em branco", entry.marked ? "marcada para revisar" : "", verdict ? `conferida, ${verdict}` : ""]
+          .filter(Boolean)
+          .join(", ")
+        return (
+          <li key={entry.questionId}>
+            <button
+              type="button"
+              className={[
+                "qmap-cell",
+                entry.answer ? "is-answered" : "",
+                entry.marked ? "is-marked" : "",
+                position === props.current ? "is-current" : "",
+                verdict === "certa" ? "is-right" : "",
+                verdict === "errada" ? "is-miss" : "",
+              ].join(" ")}
+              aria-current={position === props.current ? "step" : undefined}
+              aria-label={`Questão ${position + 1}: ${status}`}
+              onClick={() => props.onMove(position)}
+            >
+              {position + 1}
+            </button>
+          </li>
+        )
+      })}
+    </ol>
   )
 }

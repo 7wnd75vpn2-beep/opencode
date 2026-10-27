@@ -1,13 +1,14 @@
 import { ArrowRight, ListChecks, Repeat } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { StartRequest } from "../App"
-import { byDiscipline, confidenceGroups, insights, priorities, SMALL_SESSION, tally } from "../domain/analysis"
+import { byDifficulty, byDiscipline, confidenceGroups, insights, priorities, slowest, SMALL_SESSION, tally } from "../domain/analysis"
+import { byBlock, EXAM } from "../domain/exam"
 import { nextMission, type Mission } from "../domain/mission"
 import { MODE_LABEL, pickBalanced, seenQuestionIds } from "../domain/session"
-import type { Question, SessionResult } from "../domain/types"
+import { DIFFICULTY_LABEL, type Question, type SessionResult } from "../domain/types"
 import type { BuilderMode } from "./Builder"
 import { ConfidenceMatrix, DisciplineRows, Legend, ScoreRing } from "./charts"
-import { formatDate, percent, SampleNote, spokenDuration } from "./components"
+import { formatDate, formatDuration, Notice, percent, SampleNote, spokenDuration } from "./components"
 
 const STAGES = ["Resultado geral", "Por matéria", "Confiança", "Prioridades", "Próxima missão"] as const
 
@@ -47,7 +48,13 @@ export function ReportView(props: {
   const repeated = attempts.filter((attempt) => attempt.repeat)
   const fresh = attempts.filter((attempt) => !attempt.repeat)
   // A missão considera todo o histórico, inclusive esta sessão.
-  const mission = nextMission(props.history, props.bank)
+  const mission = nextMission(props.history, props.bank, Date.now())
+  const blocks = byBlock(attempts).filter((block) => block.total > 0)
+  const difficulties = byDifficulty(attempts)
+  const timed = attempts.filter((attempt) => (attempt.timeMs ?? 0) > 0)
+  const averageTime = timed.length ? timed.reduce((sum, attempt) => sum + (attempt.timeMs ?? 0), 0) / timed.length : undefined
+  const slow = slowest(attempts)
+  const idealTime = result.limitMs ? result.limitMs / attempts.length : undefined
 
   function reveal(next: number) {
     setRevealed(next)
@@ -103,6 +110,9 @@ export function ReportView(props: {
         <h2 id="stage-1" className="stage-title">
           <span className="stage-index">01</span> Resultado geral
         </h2>
+        {result.timedOut && (
+          <Notice tone="warn">O tempo de prova acabou e o simulado foi entregue automaticamente com as respostas marcadas até ali.</Notice>
+        )}
         <div className="overview">
           <div className="overview-ring">
             <ScoreRing tally={totals} />
@@ -135,10 +145,31 @@ export function ReportView(props: {
                 <dt>Tempo utilizado</dt>
                 <dd>{spokenDuration(result.durationMs)}</dd>
               </div>
+              {averageTime !== undefined && (
+                <div>
+                  <dt>Média por questão</dt>
+                  <dd>{formatDuration(averageTime)}</dd>
+                </div>
+              )}
             </dl>
+            {blocks.length > 1 && (
+              <div className="block-results">
+                {blocks.map((block) => (
+                  <div key={block.id} className="block-result">
+                    <span className="block-id">{block.id}</span>
+                    <span className="block-name">{block.nome}</span>
+                    <span className="block-score">
+                      {block.correct}
+                      <span className="muted">/{block.total}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="fine-print">
-              Pontuação de estudo: 1 ponto por acerto, 0 por erro ou questão em branco. Não é a regra oficial da prova, que deve ser conferida no
-              edital.
+              Pontuação de estudo: 1 ponto por acerto, 0 por erro ou em branco
+              {result.mode === "prova" ? `, como informado para a prova objetiva de Agente. ${EXAM.fonte}` : ". Confira a regra oficial no edital."} Notas
+              mínimas e de corte não são estimadas.
             </p>
             {totals.total < SMALL_SESSION && (
               <SampleNote>Com {totals.total} questões, a amostra ainda é pequena. Use o resultado como pista, não como conclusão.</SampleNote>
@@ -160,6 +191,14 @@ export function ReportView(props: {
             <span className="stage-index">02</span> Distribuição por matéria
           </h2>
           <DisciplineRows rows={byDiscipline(attempts)} />
+          {difficulties.length > 1 && (
+            <>
+              <h3 className="subhead">Por dificuldade</h3>
+              <DisciplineRows
+                rows={difficulties.map((row) => ({ ...row, disciplina: DIFFICULTY_LABEL[row.dificuldade], small: row.total < 3 }))}
+              />
+            </>
+          )}
           <Legend
             items={[
               { label: "Acertos", className: "seg-correct" },
@@ -220,6 +259,29 @@ export function ReportView(props: {
                 </li>
               ))}
             </ol>
+          )}
+          {slow.length > 0 && (
+            <div className="slow">
+              <h3 className="subhead">Onde você gastou mais tempo</h3>
+              <ul className="slow-list">
+                {slow.map((attempt) => (
+                  <li key={attempt.questionId}>
+                    <button type="button" className="slow-item" onClick={() => props.onAnswers(attempts.indexOf(attempt))}>
+                      <span className="slow-time">{formatDuration(attempt.timeMs ?? 0)}</span>
+                      <span className="slow-name">
+                        {attempt.tema} <span className="muted">· {attempt.disciplina}</span>
+                      </span>
+                      <span className={`slow-verdict ${attempt.correct ? "is-right" : "is-miss"}`}>
+                        {!attempt.answer ? "em branco" : attempt.correct ? "acertou" : "errou"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {idealTime !== undefined && (
+                <p className="fine-print">No ritmo da prova, a referência é de {formatDuration(idealTime)} por questão.</p>
+              )}
+            </div>
           )}
           {revealed === 4 && <NextButton label={STAGES[4]} onClick={() => reveal(5)} />}
         </section>

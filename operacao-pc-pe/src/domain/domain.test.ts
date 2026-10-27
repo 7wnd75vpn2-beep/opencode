@@ -10,10 +10,16 @@ import {
   pickBalanced,
   selectAnswer,
   setConfidence,
+  remainingMs,
+  tick,
   toggleMark,
+  toggleStrike,
 } from "./session"
+import { blockOf, byBlock, pickExam } from "./exam"
 import { emptyState, exportState, importState, loadState, parseState, saveState, STORAGE_KEY } from "./storage"
 import { DISCIPLINES, LETTERS, type Letter, type Question, type Session } from "./types"
+
+const DAY = 24 * 60 * 60 * 1000
 
 function seeded(seed: number) {
   let value = seed
@@ -68,10 +74,24 @@ class MemoryStorage implements Storage {
 }
 
 describe("banco de questões", () => {
-  test("todas as 210 questões autorais passam na validação", () => {
-    expect(QUESTIONS).toHaveLength(210)
+  test("o banco inteiro passa na validação e cobre todas as matérias", () => {
+    expect(QUESTIONS.length).toBeGreaterThanOrEqual(250)
     expect(validateBank(QUESTIONS).issues).toEqual([])
-    DISCIPLINES.forEach((discipline) => expect(BANK.filter((q) => q.disciplina === discipline)).toHaveLength(35))
+    expect(BANK).toHaveLength(QUESTIONS.length)
+    DISCIPLINES.forEach((discipline) => expect(BANK.some((q) => q.disciplina === discipline), discipline).toBe(true))
+  })
+
+  test("trava: alternativa correta muito mais longa que as demais é bloqueada", () => {
+    const sample = QUESTIONS[0] as Question
+    const giveaway: Question = {
+      ...sample,
+      id: "x-longa",
+      alternativas: {
+        ...sample.alternativas,
+        [sample.correta]: { text: "x".repeat(400), why: "Correta." },
+      },
+    }
+    expect(validateBank([giveaway]).issues.map((issue) => issue.problem)).toContain("alternativa correta muito mais longa que as demais")
   })
 
   test("questões inválidas ficam fora das sessões", () => {
@@ -173,13 +193,15 @@ describe("confiança e revisão", () => {
     expect(groups.branco).toHaveLength(1)
   })
 
-  test("revisão prioriza erro com certeza e exclui acerto com certeza", () => {
+  test("revisão espaçada: erros vencem já, acertos inseguros amanhã, acerto com certeza em uma semana", () => {
     const result = played()
-    const queue = reviewQueue([result])
     const ids = result.attempts.map((attempt) => attempt.questionId)
-    expect(queue[0]?.questionId).toBe(ids[2])
-    expect(queue.map((item) => item.questionId)).not.toContain(ids[0])
-    expect(queue.map((item) => item.questionId).sort()).toEqual([ids[1], ids[2], ids[3], ids[4], ids[5]].sort())
+    const now = reviewQueue([result], 50)
+    expect(now[0]?.questionId).toBe(ids[2])
+    expect(now.map((item) => item.questionId).sort()).toEqual([ids[2], ids[3], ids[4], ids[5]].sort())
+    expect(reviewQueue([result], 50 + 2 * DAY).map((item) => item.questionId)).toContain(ids[1])
+    expect(reviewQueue([result], 50 + 6 * DAY).map((item) => item.questionId)).not.toContain(ids[0])
+    expect(reviewQueue([result], 50 + 8 * DAY).map((item) => item.questionId)).toContain(ids[0])
   })
 
   test("a tentativa mais recente decide se a questão segue pendente", () => {
@@ -194,7 +216,9 @@ describe("confiança e revisão", () => {
       elapsedMs: 0,
     })
     expect(solved.attempts[0]?.repeat).toBe(true)
-    expect(reviewQueue([first, solved]).map((item) => item.questionId)).not.toContain(id)
+    expect(reviewQueue([first, solved], 70).map((item) => item.questionId)).not.toContain(id)
+    // Acertou na revisão, mas volta em um dia para confirmar: repetição não é domínio comprovado.
+    expect(reviewQueue([first, solved], 70 + 2 * DAY).map((item) => item.questionId)).toContain(id)
   })
 
   test("textos de análise usam os números reais", () => {
@@ -204,7 +228,61 @@ describe("confiança e revisão", () => {
   })
 })
 
+describe("simulado PC-PE", () => {
+  test("monta 20 questões de Noções de Direito e 40 de Conhecimentos Específicos, sem repetir", () => {
+    const picked = pickExam(BANK, new Set(), seeded(11))
+    expect(picked).toHaveLength(60)
+    expect(new Set(picked.map((q) => q.id)).size).toBe(60)
+    expect(picked.filter((q) => blockOf(q.disciplina) === "P1")).toHaveLength(20)
+    expect(picked.filter((q) => blockOf(q.disciplina) === "P2")).toHaveLength(40)
+  })
+
+  test("o prazo é um horário real e o resultado registra o tempo esgotado", () => {
+    const session = createSession({ mode: "prova", title: "", questions: BANK.slice(0, 3), seen: new Set(), now: 1_000, limitMs: 60_000 })
+    expect(session.deadline).toBe(61_000)
+    expect(remainingMs(session, 31_000)).toBe(30_000)
+    expect(remainingMs(session, 99_000)).toBe(0)
+    const result = finishSession({ session, bank: BANK_BY_ID, now: 61_000, elapsedMs: 60_000, timedOut: true })
+    expect(result.timedOut).toBe(true)
+    expect(tally(result.attempts).blank).toBe(3)
+  })
+
+  test("riscar alternativa e tempo por questão", () => {
+    const session = sessionWith(2)
+    const struck = toggleStrike(toggleStrike(session, 0, "A"), 0, "B")
+    expect(struck.items[0]?.struck).toEqual(["A", "B"])
+    expect(toggleStrike(struck, 0, "A").items[0]?.struck).toEqual(["B"])
+    const ticked = tick(tick(session, 1000), 1000)
+    expect(ticked.items[0]?.timeMs).toBe(2000)
+    expect(ticked.elapsedMs).toBe(2000)
+    const result = finishSession({ session: ticked, bank: BANK_BY_ID, now: 5, elapsedMs: 2000 })
+    expect(result.attempts[0]?.timeMs).toBe(2000)
+    expect(byBlock(result.attempts).reduce((sum, block) => sum + block.total, 0)).toBe(2)
+  })
+})
+
 describe("persistência", () => {
+  test("progresso salvo pela versão anterior continua válido", () => {
+    const legacy = {
+      version: 1,
+      history: [
+        {
+          id: "s-old",
+          mode: "simulado",
+          title: "Antigo",
+          startedAt: 1,
+          finishedAt: 2,
+          durationMs: 1,
+          attempts: [{ questionId: "lp-crase-01", disciplina: "Língua Portuguesa", tema: "Crase", correct: true, answer: "A", marked: false, repeat: false }],
+          items: [{ questionId: "lp-crase-01", order: ["A", "B", "C", "D", "E"], answer: "A", marked: false, checked: false, repeat: false }],
+        },
+      ],
+      flags: [],
+      preferences: { weeklyGoal: 60, introSeen: true },
+    }
+    expect(parseState(legacy)?.history).toHaveLength(1)
+  })
+
   test("salva, recarrega e retoma sessão em andamento", () => {
     const storage = new MemoryStorage()
     const state = { ...emptyState(), active: selectAnswer(sessionWith(4), 1, "C") }

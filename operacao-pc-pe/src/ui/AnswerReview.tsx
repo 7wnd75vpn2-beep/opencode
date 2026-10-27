@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 import { useId, useState } from "react"
-import type { Flag, Question, SessionResult } from "../domain/types"
+import { DIFFICULTY_LABEL, type Flag, type Question, type SessionResult } from "../domain/types"
+import { formatDuration } from "./components"
 import { Explanation } from "./Explanation"
 
 const CONFIDENCE_TEXT = { certeza: "Tenho certeza", duvida: "Estou em dúvida", chute: "Foi um chute" } as const
@@ -59,13 +60,19 @@ export function AnswerReview(props: {
             /
           </span>
           <span className="meta-theme">{question.tema}</span>
-          {item.repeat && <span className="tag">já vista</span>}
-          {item.marked && <span className="tag">marcada</span>}
-          {item.answer && item.confidence && <span className="tag">{CONFIDENCE_TEXT[item.confidence]}</span>}
+          <span className={`badge badge-${question.dificuldade}`}>{DIFFICULTY_LABEL[question.dificuldade]}</span>
+          {item.repeat && <span className="badge">já vista</span>}
+          {item.marked && <span className="badge">marcada</span>}
+          {item.answer && item.confidence && <span className="badge">{CONFIDENCE_TEXT[item.confidence]}</span>}
+          {(item.timeMs ?? 0) > 0 && <span className="badge">{formatDuration(item.timeMs ?? 0)}</span>}
         </header>
         <h1 className="question-text">
           <span className="sr-only">Questão {index + 1}: </span>
-          {question.enunciado}
+          {question.enunciado.split("\n\n").map((paragraph, position, all) => (
+            <span key={position} className={`question-paragraph ${all.length > 1 && position === 0 ? "is-support" : ""}`}>
+              {paragraph}
+            </span>
+          ))}
         </h1>
         <Explanation question={question} item={item} headingLevel={2} />
         <FlagForm key={question.id} questionId={question.id} count={flagged.length} onFlag={props.onFlag} />

@@ -1,4 +1,5 @@
 import {
+  DIFFICULTIES,
   DISCIPLINES,
   LETTERS,
   type AppState,
@@ -88,7 +89,7 @@ function parseJson(text: string): unknown {
 
 // ───────────── Validação estrutural ─────────────
 
-const MODES: Mode[] = ["diagnostico", "treino", "simulado", "revisao"]
+const MODES: Mode[] = ["diagnostico", "treino", "simulado", "prova", "revisao"]
 const CONFIDENCES: Confidence[] = ["certeza", "duvida", "chute"]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -115,7 +116,9 @@ function isItem(value: unknown): value is SessionItem {
     optional(value.confidence, isConfidence) &&
     isBoolean(value.marked) &&
     isBoolean(value.checked) &&
-    isBoolean(value.repeat)
+    isBoolean(value.repeat) &&
+    optional(value.struck, (struck) => Array.isArray(struck) && struck.every(isLetter)) &&
+    optional(value.timeMs, isNumber)
   )
 }
 
@@ -133,6 +136,8 @@ function isSession(value: unknown): value is Session {
     value.current >= 0 &&
     value.current < value.items.length &&
     isNumber(value.elapsedMs) &&
+    optional(value.deadline, isNumber) &&
+    optional(value.limitMs, isNumber) &&
     optional(value.finishedAt, isNumber)
   )
 }
@@ -147,7 +152,9 @@ function isAttempt(value: unknown): value is Attempt {
     isBoolean(value.correct) &&
     optional(value.confidence, isConfidence) &&
     isBoolean(value.marked) &&
-    isBoolean(value.repeat)
+    isBoolean(value.repeat) &&
+    optional(value.dificuldade, (dificuldade) => DIFFICULTIES.some((item) => item === dificuldade)) &&
+    optional(value.timeMs, isNumber)
   )
 }
 
@@ -160,6 +167,8 @@ function isResult(value: unknown): value is SessionResult {
     isNumber(value.startedAt) &&
     isNumber(value.finishedAt) &&
     isNumber(value.durationMs) &&
+    optional(value.timedOut, isBoolean) &&
+    optional(value.limitMs, isNumber) &&
     Array.isArray(value.attempts) &&
     value.attempts.every(isAttempt) &&
     Array.isArray(value.items) &&
@@ -172,7 +181,13 @@ function isFlag(value: unknown): value is Flag {
 }
 
 function isPreferences(value: unknown): value is Preferences {
-  return isRecord(value) && isNumber(value.weeklyGoal) && value.weeklyGoal > 0 && isBoolean(value.introSeen)
+  return (
+    isRecord(value) &&
+    isNumber(value.weeklyGoal) &&
+    value.weeklyGoal > 0 &&
+    isBoolean(value.introSeen) &&
+    optional(value.fontScale, isNumber)
+  )
 }
 
 export function parseState(value: unknown): AppState | undefined {

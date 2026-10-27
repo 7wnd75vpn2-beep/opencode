@@ -21,21 +21,32 @@ npm run typecheck
 
 ## O que existe
 
-- **Primeira visita**: introdução curta com duas opções — diagnóstico inicial (mostra nº de questões e duração estimada antes de começar) ou montar o próprio treino.
-- **Modos**: Diagnóstico (12 questões equilibradas entre disciplinas, gabarito no fim), Treino dirigido (matéria, tema e quantidade; correção ao confirmar, resposta bloqueada depois), Simulado (cronômetro, navegação livre, marcação, gabarito só ao finalizar, confirmação com nº de questões em branco) e Revisão dos pontos fracos (erros, acertos inseguros e marcadas, identificadas como repetidas).
-- **Confiança opcional** (certeza / dúvida / chute) gera quatro grupos; sem confiança informada, nada é suposto.
-- **Fila de revisão** pela tentativa mais recente de cada questão: erro com certeza > erro com dúvida/chute > em branco > acerto no chute > acerto com dúvida > apenas marcada. Acerto com certeza sai da fila.
-- **Relatório progressivo** em 5 etapas: resultado geral, por matéria, análise de confiança, prioridades (com o motivo de cada uma) e próxima missão.
-- **Gabarito comentado**: "Sua resposta" e "Resposta correta" primeiro; depois por que a correta está certa, por que a escolhida está errada, o que lembrar, justificativa de todas as alternativas e referência. Sinalização de problema salva localmente e exportável.
-- **Painel**: continuar sessão interrompida, próxima revisão recomendada, meta semanal, evolução (inéditas × repetidas), desempenho por matéria, pendências e histórico. Sem dados de exemplo.
-- **Persistência local** com tratamento de armazenamento bloqueado/corrompido, exportação e importação em JSON validado.
-- Alternativas embaralhadas por sessão preservando gabarito e justificativas (os textos não citam letras).
-- Pontuação de estudo transparente: 1 por acerto, 0 por erro ou branco. Nenhuma regra oficial é aplicada.
+- **Página inicial** com números reais do banco, explicação do método e do formato da prova (sem resultados inventados).
+- **Simulado PC-PE**: 60 questões (20 de Noções de Direito + 40 de Conhecimentos Específicos), relógio real que não pausa, entrega automática ao fim do tempo, ritmo por questão e relatório por bloco. Formato segundo resumos do edital publicados por sites de concursos — o PDF oficial não pôde ser consultado.
+- **Diagnóstico** (uma questão de cada matéria), **treino dirigido** (matéria, tema e dificuldade, com correção imediata), **simulado livre** e **revisão do dia**.
+- **Confiança opcional** (certeza / dúvida / chute) gera quatro grupos; nada é suposto sem resposta.
+- **Revisão espaçada**: erro ou branco volta no mesmo dia; acerto com dúvida, em 1 dia; acerto com certeza sobe de caixa (3, 7, 15, 30 dias). Questões repetidas são sempre identificadas como tais.
+- **Na questão**: riscar alternativas, ajustar o tamanho do texto, marcar para revisar, mapa de questões por bloco, tempo gasto em cada questão.
+- **Relatório progressivo** em 5 etapas, com resultado por bloco, por matéria e por dificuldade, análise de confiança, prioridades com motivo e as questões em que o aluno gastou mais tempo.
+- **Painel**: revisões para hoje e próximos dias, meta semanal, evolução (inéditas × repetidas), desempenho por matéria, mapa de temas e histórico.
+- **Gabarito comentado** em todas as alternativas, sinalização de problema exportável, persistência local, exportação e importação em JSON validado.
+
+## Banco de questões
+
+286 questões autorais em 10 matérias, no estilo de múltipla escolha da Cebraspe: 97 situações hipotéticas, 17 no formato “assinale a INCORRETA”, 100 médias, 135 difíceis e 51 de nível desafio.
+
+Travas automáticas (`npm test`) bloqueiam questões que deixariam a prova “adivinhável”:
+- a alternativa correta não pode ser muito mais longa que as demais (hoje ela é a mais longa em 16% das questões, abaixo dos 20% do acaso);
+- toda alternativa precisa de justificativa, e só a correta pode começar com “Correta”;
+- alternativas não podem citar letras (a ordem é embaralhada a cada sessão);
+- cada matéria precisa de questões nos três níveis de dificuldade.
+
+Para ver os tamanhos das alternativas de um arquivo: `npx tsx scripts/tamanhos.ts src/data/banco/penal.ts`.
 
 ## Estrutura
 
 ```
-src/data/questions.ts   banco autoral: 30 questões de fundamentos + src/data/banco/ (30 por disciplina) = 210
+src/data/questions.ts   junta os arquivos de src/data/banco/ (um por matéria + incorretas.ts)
 src/domain/             tipos, validação do banco, sessão, análise, missão, armazenamento (+ testes)
 src/ui/                 telas e componentes React
 src/styles/app.css      identidade visual
@@ -47,13 +58,14 @@ status `rascunho` etc.) ficam fora das sessões; `npm run validate:bank` confere
 
 ## Pendências de conteúdo
 
-- As disciplinas são fundamentos usuais em provas policiais e **não foram conferidas contra o conteúdo programático do edital vigente**. Não há datas, pesos, notas de corte ou regras oficiais no app.
-- As 210 questões têm status `revisao-interna`: precisam de revisão por professor de cada disciplina antes de serem marcadas como `revisada`.
-- Legislação estadual de Pernambuco (Constituição Estadual, estatutos) não está coberta, por falta de verificação no texto oficial.
+- As matérias seguem resumos do edital de 2026 publicados por sites de concursos; o **PDF oficial não pôde ser consultado** daqui, e os tópicos de cada matéria precisam ser conferidos nele. Não há notas de corte ou pesos estimados no app.
+- As 286 questões têm status `revisao-interna`: precisam de revisão por professor de cada disciplina antes de serem marcadas como `revisada`.
+- Legislação estadual de Pernambuco (Constituição Estadual, arts. 101 a 105-B; Leis 6.425/1972 e 6.123/1968; LCs 137/2008 e 317/2015) não está coberta, por falta de acesso ao texto oficial.
+- Pontos de legislação recente a conferir com cuidado: feminicídio autônomo (Lei 14.994/2024), Tema 506 do STF (maconha), injúria racial na Lei 7.716 (Lei 14.532/2023), perda da nacionalidade (EC 131/2023), improbidade (Lei 14.230/2021).
 
 ## Limitações antes de comercializar
 
-- Banco ainda modesto (35 questões por disciplina): quem treina muito logo passa a rever itens já vistos.
+- Banco ainda modesto (20 a 35 questões por matéria): quem treina muito logo passa a rever itens já vistos.
 - Dados apenas no navegador: sem sincronização, sem backup automático, sem conta.
 - Sem revisão jurídica/pedagógica externa; sem termos de uso e política de privacidade.
 - Sem pagamento, controle de acesso ou canal real para receber as sinalizações de erro.

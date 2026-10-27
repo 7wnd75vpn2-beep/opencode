@@ -147,24 +147,59 @@ export type PendingReview = {
   score: number
   reason: string
   lastSeen: number
+  /** Caixa da revisão espaçada: 0 = rever já; 5 = intervalo mais longo. */
+  box: number
+  due: number
 }
 
+const DAY = 24 * 60 * 60 * 1000
+/** Intervalo até a próxima revisão para cada caixa. */
+export const BOX_INTERVAL_DAYS = [0, 1, 3, 7, 15, 30] as const
+
 /**
- * Fila de revisão: considera a tentativa mais recente de cada questão.
- * Errar com certeza pesa mais do que errar com dúvida, que pesa mais do que acertar sem segurança.
- * Acerto com certeza só sai da fila se a questão não estiver marcada.
+ * Revisão espaçada (sistema de caixas): cada tentativa move a questão de caixa.
+ * Errar ou deixar em branco volta para a caixa 0 (rever já). Acertar com certeza sobe;
+ * acertar com dúvida ou chute mantém um intervalo curto. Questão marcada fica para já.
  */
-export function reviewQueue(history: SessionResult[]): PendingReview[] {
-  const latest = new Map<string, { attempt: Attempt; at: number }>()
+export function schedule(history: SessionResult[]) {
+  const state = new Map<string, PendingReview>()
   ;[...history]
     .sort((a, b) => a.finishedAt - b.finishedAt)
-    .forEach((result) => result.attempts.forEach((attempt) => latest.set(attempt.questionId, { attempt, at: result.finishedAt })))
-  return [...latest.values()]
-    .flatMap(({ attempt, at }) => {
-      const pending = pendingScore(attempt)
-      return pending ? [{ questionId: attempt.questionId, lastSeen: at, ...pending }] : []
-    })
-    .sort((a, b) => b.score - a.score || b.lastSeen - a.lastSeen)
+    .forEach((result) =>
+      result.attempts.forEach((attempt) => {
+        const previous = state.get(attempt.questionId)
+        const box = nextBox(attempt, previous?.box)
+        const priority = pendingScore(attempt)
+        const due = attempt.marked ? result.finishedAt : result.finishedAt + (BOX_INTERVAL_DAYS[box] ?? 30) * DAY
+        state.set(attempt.questionId, {
+          questionId: attempt.questionId,
+          lastSeen: result.finishedAt,
+          box,
+          due,
+          score: priority?.score ?? 10,
+          reason: priority?.reason ?? `Você acertou com certeza. Revisão programada para confirmar que ainda lembra.`,
+        })
+      }),
+    )
+  return state
+}
+
+function nextBox(attempt: Attempt, previous: number | undefined) {
+  if (!attempt.answer || !attempt.correct) return 0
+  if (attempt.confidence === "certeza") return previous === undefined ? 3 : Math.min(5, previous + 1)
+  return Math.max(1, Math.min(previous ?? 1, 2))
+}
+
+/** Questões cuja revisão já venceu, das mais urgentes para as menos urgentes. */
+export function reviewQueue(history: SessionResult[], now: number): PendingReview[] {
+  return [...schedule(history).values()]
+    .filter((item) => item.due <= now)
+    .sort((a, b) => b.score - a.score || a.due - b.due)
+}
+
+/** Revisões que ainda vão vencer, agrupadas por dia a partir de amanhã. */
+export function upcomingReviews(history: SessionResult[], now: number) {
+  return [...schedule(history).values()].filter((item) => item.due > now).sort((a, b) => a.due - b.due)
 }
 
 function pendingScore(attempt: Attempt) {
@@ -179,7 +214,39 @@ function pendingScore(attempt: Attempt) {
   if (attempt.confidence === "chute") return { score: 50 + bonus, reason: `Você acertou, mas no chute.${markedNote}` }
   if (attempt.confidence === "duvida") return { score: 40 + bonus, reason: `Você acertou, mas com dúvida.${markedNote}` }
   if (attempt.marked) return { score: 30, reason: "Você marcou para revisar." }
+  if (!attempt.confidence) return { score: 20, reason: "Você acertou, sem indicar confiança. Revisão para confirmar." }
   return undefined
+}
+
+/** Domínio por tema, considerando a tentativa mais recente de cada questão. */
+export function themeMastery(history: SessionResult[]) {
+  const latest = new Map<string, Attempt>()
+  ;[...history]
+    .sort((a, b) => a.finishedAt - b.finishedAt)
+    .forEach((result) => result.attempts.forEach((attempt) => latest.set(attempt.questionId, attempt)))
+  const attempts = [...latest.values()]
+  const keys = [...new Set(attempts.map((attempt) => `${attempt.disciplina}§${attempt.tema}`))]
+  return keys
+    .map((key) => {
+      const subset = attempts.filter((attempt) => `${attempt.disciplina}§${attempt.tema}` === key)
+      const first = subset[0] as Attempt
+      return { disciplina: first.disciplina, tema: first.tema, ...tally(subset) }
+    })
+    .sort((a, b) => a.disciplina.localeCompare(b.disciplina) || a.tema.localeCompare(b.tema))
+}
+
+export function byDifficulty(attempts: Attempt[]) {
+  return (["media", "dificil", "desafio"] as const)
+    .map((dificuldade) => ({ dificuldade, ...tally(attempts.filter((attempt) => attempt.dificuldade === dificuldade)) }))
+    .filter((row) => row.total > 0)
+}
+
+/** Questões em que o aluno gastou mais tempo, para treinar ritmo de prova. */
+export function slowest(attempts: Attempt[], limit = 3) {
+  return attempts
+    .filter((attempt) => (attempt.timeMs ?? 0) > 0)
+    .sort((a, b) => (b.timeMs ?? 0) - (a.timeMs ?? 0))
+    .slice(0, limit)
 }
 
 /** Evolução: separa questões inéditas de repetidas para não confundir memorização com domínio. */

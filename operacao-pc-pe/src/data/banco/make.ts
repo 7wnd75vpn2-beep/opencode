@@ -1,4 +1,4 @@
-import { type Discipline, type Letter, type Question } from "../../domain/types"
+import { type Difficulty, type Discipline, type QuestionType, type Letter, type Question } from "../../domain/types"
 
 type Alternative = readonly [text: string, why: string]
 
@@ -7,6 +7,8 @@ export function make(disciplina: Discipline) {
   return (input: {
     id: string
     tema: string
+    dificuldade: Difficulty
+    tipo: QuestionType
     enunciado: string
     alternativas: readonly [Alternative, Alternative, Alternative, Alternative, Alternative]
     correta: Letter
@@ -19,6 +21,8 @@ export function make(disciplina: Discipline) {
     cargo: "Agente de Polícia",
     disciplina,
     tema: input.tema,
+    dificuldade: input.dificuldade,
+    tipo: input.tipo,
     enunciado: input.enunciado,
     alternativas: {
       A: { text: input.alternativas[0][0], why: input.alternativas[0][1] },

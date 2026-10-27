@@ -1,7 +1,8 @@
-import { ArrowRight, Gauge, History, PlayCircle, Repeat, SlidersHorizontal, Timer, Trash2 } from "lucide-react"
+import { ArrowRight, CalendarClock, Gauge, History, PlayCircle, Repeat, SlidersHorizontal, Timer, Trash2, Trophy } from "lucide-react"
 import { useId, useState } from "react"
 import type { StartRequest } from "../App"
-import { answeredThisWeek, evolution, reviewQueue, SMALL_DISCIPLINE, tally } from "../domain/analysis"
+import { answeredThisWeek, evolution, reviewQueue, SMALL_DISCIPLINE, tally, themeMastery, upcomingReviews } from "../domain/analysis"
+import { EXAM, examSize, pickExam } from "../domain/exam"
 import { nextMission, REVIEW_SIZE } from "../domain/mission"
 import { DIAGNOSTIC_SIZE, disciplinesWithQuestions, MODE_LABEL, pickBalanced, seenQuestionIds } from "../domain/session"
 import type { AppState, Question } from "../domain/types"
@@ -9,7 +10,8 @@ import type { BuilderMode } from "./Builder"
 import { EvolutionChart } from "./charts"
 import { Dialog, formatDate, percent, ProgressBar, SampleNote, spokenDuration } from "./components"
 
-const GOALS = [20, 40, 60, 100, 150]
+const GOALS = [20, 40, 60, 100, 150, 300]
+const DAY = 24 * 60 * 60 * 1000
 
 export function Dashboard(props: {
   state: AppState
@@ -23,17 +25,23 @@ export function Dashboard(props: {
 }) {
   const [discarding, setDiscarding] = useState(false)
   const goalId = useId()
+  const now = Date.now()
   const history = props.state.history
   const active = props.state.active
   const known = new Set(props.bank.map((question) => question.id))
-  const queue = reviewQueue(history).filter((item) => known.has(item.questionId))
-  const mission = nextMission(history, props.bank)
+  const queue = reviewQueue(history, now).filter((item) => known.has(item.questionId))
+  const upcoming = upcomingReviews(history, now).filter((item) => known.has(item.questionId))
+  const tomorrow = upcoming.filter((item) => item.due <= now + DAY).length
+  const nextWeek = upcoming.filter((item) => item.due <= now + 7 * DAY).length
+  const mission = nextMission(history, props.bank, now)
   const seen = seenQuestionIds(history)
   const points = evolution(history)
   const allAttempts = history.flatMap((result) => result.attempts)
-  const week = answeredThisWeek(history, Date.now())
+  const week = answeredThisWeek(history, now)
   const goal = props.state.preferences.weeklyGoal
   const unseen = props.bank.filter((question) => !seen.has(question.id)).length
+  const themes = themeMastery(history).filter((theme) => props.bank.some((question) => question.tema === theme.tema))
+  const exams = history.filter((result) => result.mode === "prova")
 
   function startReview(ids: string[]) {
     props.onStart({
@@ -43,16 +51,20 @@ export function Dashboard(props: {
     })
   }
 
+  function startExam() {
+    props.onStart({ mode: "prova", title: EXAM.nome, questions: pickExam(props.bank, seen), limitMs: EXAM.tempoObjetivasMin * 60_000 })
+  }
+
   function startMission() {
     if (!mission) return
     if (mission.kind === "revisao") return startReview(mission.questionIds)
-    if (mission.kind === "simulado") return props.onOpenBuilder("simulado")
+    if (mission.kind === "simulado") return props.onOpenBuilder("prova")
     props.onStart({
       mode: "treino",
       title: `Treino · ${mission.disciplina}`,
       questions: pickBalanced(
         props.bank.filter((question) => question.disciplina === mission.disciplina),
-        5,
+        10,
         seen,
       ),
     })
@@ -73,8 +85,10 @@ export function Dashboard(props: {
               {active.title}
             </h2>
             <p className="hero-text">
-              {MODE_LABEL[active.mode]} · {active.items.filter((item) => item.answer).length} de {active.items.length} respondidas ·{" "}
-              {spokenDuration(active.elapsedMs)} de sessão
+              {MODE_LABEL[active.mode]} · {active.items.filter((item) => item.answer).length} de {active.items.length} respondidas
+              {active.deadline !== undefined
+                ? ` · o relógio da prova continua correndo (${spokenDuration(Math.max(0, active.deadline - now))} restantes)`
+                : ` · ${spokenDuration(active.elapsedMs)} de sessão`}
             </p>
             <ProgressBar
               value={active.items.filter((item) => item.answer).length}
@@ -107,30 +121,41 @@ export function Dashboard(props: {
           )
         )}
 
-        <section className="panel goal" aria-labelledby="goal-title">
-          <div className="goal-head">
-            <h2 id="goal-title" className="panel-title">
-              Meta da semana
-            </h2>
-            <label className="sr-only" htmlFor={goalId}>
-              Meta semanal de questões
-            </label>
-            <select id={goalId} className="select select-sm" value={goal} onChange={(event) => props.onGoal(Number(event.target.value))}>
-              {[...new Set([...GOALS, goal])]
-                .sort((a, b) => a - b)
-                .map((value) => (
-                  <option key={value} value={value}>
-                    {value} questões
-                  </option>
-                ))}
-            </select>
+        <section className="panel side-stack" aria-label="Revisões e meta">
+          <div className="review-count">
+            <CalendarClock size={20} aria-hidden="true" />
+            <div>
+              <p className="review-number">
+                {queue.length} <span>{queue.length === 1 ? "revisão para hoje" : "revisões para hoje"}</span>
+              </p>
+              <p className="muted">
+                Amanhã: {tomorrow} · Próximos 7 dias: {nextWeek}
+              </p>
+            </div>
           </div>
-          <p className="goal-number">
-            {week}
-            <span> / {goal}</span>
-          </p>
-          <ProgressBar value={week} max={goal} label="Progresso da meta semanal" />
-          <p className="fine-print">Questões respondidas desde segunda-feira, em sessões concluídas.</p>
+          <div className="goal">
+            <div className="goal-head">
+              <h2 className="panel-title">Meta da semana</h2>
+              <label className="sr-only" htmlFor={goalId}>
+                Meta semanal de questões
+              </label>
+              <select id={goalId} className="select select-sm" value={goal} onChange={(event) => props.onGoal(Number(event.target.value))}>
+                {[...new Set([...GOALS, goal])]
+                  .sort((a, b) => a - b)
+                  .map((value) => (
+                    <option key={value} value={value}>
+                      {value} questões
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <p className="goal-number">
+              {week}
+              <span> / {goal}</span>
+            </p>
+            <ProgressBar value={week} max={goal} label="Progresso da meta semanal" />
+            <p className="fine-print">Questões respondidas desde segunda-feira, em sessões concluídas.</p>
+          </div>
         </section>
       </div>
 
@@ -139,6 +164,31 @@ export function Dashboard(props: {
           Começar uma sessão
         </h2>
         <div className="quick-grid">
+          <button type="button" className="quick-item quick-featured" onClick={startExam}>
+            <Trophy size={20} aria-hidden="true" />
+            <span className="quick-name">Simulado PC-PE</span>
+            <span className="quick-hint">
+              {examSize(props.bank)} questões · {EXAM.tempoObjetivasMin / 60} h · formato da prova
+              {exams.length > 0 ? ` · ${exams.length} feito${exams.length > 1 ? "s" : ""}` : ""}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="quick-item"
+            disabled={queue.length === 0}
+            onClick={() => startReview(queue.slice(0, REVIEW_SIZE).map((item) => item.questionId))}
+          >
+            <Repeat size={20} aria-hidden="true" />
+            <span className="quick-name">Revisão do dia</span>
+            <span className="quick-hint">
+              {queue.length === 0 ? "Nada vencido hoje" : `${Math.min(REVIEW_SIZE, queue.length)} das ${queue.length} vencidas`}
+            </span>
+          </button>
+          <button type="button" className="quick-item" onClick={() => props.onOpenBuilder("treino")}>
+            <SlidersHorizontal size={20} aria-hidden="true" />
+            <span className="quick-name">Treino dirigido</span>
+            <span className="quick-hint">Matéria, tema e dificuldade</span>
+          </button>
           <button
             type="button"
             className="quick-item"
@@ -149,30 +199,13 @@ export function Dashboard(props: {
             <Gauge size={20} aria-hidden="true" />
             <span className="quick-name">Diagnóstico</span>
             <span className="quick-hint">
-              {Math.min(DIAGNOSTIC_SIZE, props.bank.length)} questões variadas{unseen < DIAGNOSTIC_SIZE ? ` · ${unseen} inéditas` : ""}
+              {Math.min(DIAGNOSTIC_SIZE, props.bank.length)} questões, uma de cada matéria · {unseen} inéditas no banco
             </span>
-          </button>
-          <button type="button" className="quick-item" onClick={() => props.onOpenBuilder("treino")}>
-            <SlidersHorizontal size={20} aria-hidden="true" />
-            <span className="quick-name">Treino dirigido</span>
-            <span className="quick-hint">Matéria, tema e quantidade</span>
           </button>
           <button type="button" className="quick-item" onClick={() => props.onOpenBuilder("simulado")}>
             <Timer size={20} aria-hidden="true" />
-            <span className="quick-name">Simulado</span>
+            <span className="quick-name">Simulado livre</span>
             <span className="quick-hint">Gabarito só no final</span>
-          </button>
-          <button
-            type="button"
-            className="quick-item"
-            disabled={queue.length === 0}
-            onClick={() => startReview(queue.slice(0, REVIEW_SIZE).map((item) => item.questionId))}
-          >
-            <Repeat size={20} aria-hidden="true" />
-            <span className="quick-name">Revisão dos pontos fracos</span>
-            <span className="quick-hint">
-              {queue.length === 0 ? "Nada pendente agora" : `${queue.length} ${queue.length === 1 ? "questão pendente" : "questões pendentes"}`}
-            </span>
           </button>
         </div>
       </section>
@@ -189,51 +222,100 @@ export function Dashboard(props: {
           ) : (
             <EvolutionChart points={points} />
           )}
-          {points.length > 0 && points.length < 3 && <SampleNote>Com {points.length} {points.length === 1 ? "sessão" : "sessões"}, ainda não dá para falar em tendência.</SampleNote>}
+          {points.length > 0 && points.length < 3 && (
+            <SampleNote>
+              Com {points.length} {points.length === 1 ? "sessão" : "sessões"}, ainda não dá para falar em tendência.
+            </SampleNote>
+          )}
         </section>
 
         <section className="panel" aria-labelledby="disciplines-title">
           <h2 id="disciplines-title" className="panel-title">
             Desempenho por matéria
           </h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Matéria</th>
-                <th scope="col">Respondidas</th>
-                <th scope="col">Inéditas</th>
-                <th scope="col">Repetidas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {disciplinesWithQuestions(props.bank).map((disciplina) => {
-                const subset = allAttempts.filter((attempt) => attempt.disciplina === disciplina)
-                const answered = subset.filter((attempt) => attempt.answer).length
-                const fresh = tally(subset.filter((attempt) => !attempt.repeat))
-                const repeated = tally(subset.filter((attempt) => attempt.repeat))
-                return (
-                  <tr key={disciplina}>
-                    <th scope="row">
-                      {disciplina}
-                      {subset.length > 0 && subset.length < SMALL_DISCIPLINE && <span className="tag">amostra pequena</span>}
-                    </th>
-                    <td>{answered}</td>
-                    <td>{fresh.total ? `${percent(fresh.rate)} (${fresh.correct}/${fresh.total})` : "—"}</td>
-                    <td>{repeated.total ? `${percent(repeated.rate)} (${repeated.correct}/${repeated.total})` : "—"}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Matéria</th>
+                  <th scope="col">Resp.</th>
+                  <th scope="col">Inéditas</th>
+                  <th scope="col">Repetidas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disciplinesWithQuestions(props.bank).map((disciplina) => {
+                  const subset = allAttempts.filter((attempt) => attempt.disciplina === disciplina)
+                  const answered = subset.filter((attempt) => attempt.answer).length
+                  const fresh = tally(subset.filter((attempt) => !attempt.repeat))
+                  const repeated = tally(subset.filter((attempt) => attempt.repeat))
+                  return (
+                    <tr key={disciplina} className={subset.length > 0 && subset.length < SMALL_DISCIPLINE ? "is-small" : ""}>
+                      <th scope="row">
+                        {disciplina}
+                        {subset.length > 0 && subset.length < SMALL_DISCIPLINE && <span className="sr-only"> (amostra pequena)</span>}
+                      </th>
+                      <td>{answered}</td>
+                      <td>{fresh.total ? `${percent(fresh.rate)} (${fresh.correct}/${fresh.total})` : "—"}</td>
+                      <td>{repeated.total ? `${percent(repeated.rate)} (${repeated.correct}/${repeated.total})` : "—"}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {allAttempts.length > 0 && (
+            <p className="fine-print">Matérias em cinza têm menos de {SMALL_DISCIPLINE} questões respondidas: amostra pequena para conclusões.</p>
+          )}
           <p className="fine-print">Repetidas são questões que você já tinha visto. Acertá-las indica memória da questão, não necessariamente domínio do tema.</p>
+        </section>
+
+        <section className="panel panel-wide" aria-labelledby="themes-title">
+          <h2 id="themes-title" className="panel-title">
+            Mapa de temas
+          </h2>
+          {themes.length === 0 ? (
+            <p className="muted">Os temas aparecem aqui conforme você responde. Cada um mostra o resultado da sua última tentativa em cada questão.</p>
+          ) : (
+            <>
+              <ul className="theme-map">
+                {themes.map((theme) => {
+                  const level = theme.total < 2 ? "is-few" : theme.rate >= 0.8 ? "is-good" : theme.rate >= 0.5 ? "is-mid" : "is-bad"
+                  return (
+                    <li key={`${theme.disciplina}-${theme.tema}`} className={`theme-chip ${level}`}>
+                      <span className="theme-name">{theme.tema}</span>
+                      <span className="theme-score">
+                        {theme.correct}/{theme.total}
+                      </span>
+                      <span className="sr-only">, {theme.disciplina}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+              <ul className="legend">
+                <li>
+                  <span className="swatch theme-good" aria-hidden="true" /> 80% ou mais
+                </li>
+                <li>
+                  <span className="swatch theme-mid" aria-hidden="true" /> 50% a 79%
+                </li>
+                <li>
+                  <span className="swatch theme-bad" aria-hidden="true" /> abaixo de 50%
+                </li>
+                <li>
+                  <span className="swatch theme-few" aria-hidden="true" /> menos de 2 questões
+                </li>
+              </ul>
+            </>
+          )}
         </section>
 
         <section className="panel" aria-labelledby="pending-title">
           <h2 id="pending-title" className="panel-title">
-            Pendentes de revisão <span className="count">{queue.length}</span>
+            Vencidas hoje <span className="count">{queue.length}</span>
           </h2>
           {queue.length === 0 ? (
-            <p className="muted">Nenhuma questão pendente. Erros, acertos inseguros e itens marcados aparecem aqui.</p>
+            <p className="muted">Nenhuma revisão vencida. Erros, acertos inseguros e itens marcados aparecem aqui no dia certo.</p>
           ) : (
             <ul className="pending-list">
               {queue.slice(0, 6).map((item) => {

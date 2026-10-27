@@ -22,7 +22,7 @@ export type Screen =
   | { name: "answers"; resultId: string; index: number }
   | { name: "data" }
 
-export type StartRequest = { mode: Mode; title: string; questions: Question[] }
+export type StartRequest = { mode: Mode; title: string; questions: Question[]; limitMs?: number }
 
 export function App() {
   const app = useAppState()
@@ -55,8 +55,8 @@ export function App() {
     app.setState((state) => ({ ...state, active: session }))
   }
 
-  function finish(session: Session) {
-    const result = finishSession({ session, bank: BANK_BY_ID, now: Date.now(), elapsedMs: session.elapsedMs })
+  function finish(session: Session, timedOut?: boolean) {
+    const result = finishSession({ session, bank: BANK_BY_ID, now: Date.now(), elapsedMs: session.elapsedMs, timedOut })
     app.setState((state) => ({ ...state, active: undefined, history: [...state.history, result] }))
     setScreen({ name: "report", resultId: result.id })
   }
@@ -102,7 +102,7 @@ export function App() {
       )}
 
       <main id="conteudo" ref={main} tabIndex={-1} className={`main main-${screen.name}`}>
-        {screen.name === "home" && firstVisit && <Intro bank={BANK} onStart={start} onBuild={() => setScreen({ name: "builder", mode: "treino" })} />}
+        {screen.name === "home" && firstVisit && <Intro bank={BANK} onStart={start} onBuild={(mode) => setScreen({ name: "builder", mode })} />}
         {screen.name === "home" && !firstVisit && (
           <Dashboard
             state={app.state}
@@ -125,7 +125,16 @@ export function App() {
           />
         )}
         {screen.name === "session" && active && (
-          <SessionView key={active.id} session={active} bank={BANK_BY_ID} onChange={updateSession} onFinish={finish} onExit={() => setScreen({ name: "home" })} />
+          <SessionView
+            key={active.id}
+            session={active}
+            bank={BANK_BY_ID}
+            fontScale={app.state.preferences.fontScale ?? 1}
+            onFontScale={(fontScale) => app.setState((state) => ({ ...state, preferences: { ...state.preferences, fontScale } }))}
+            onChange={updateSession}
+            onFinish={finish}
+            onExit={() => setScreen({ name: "home" })}
+          />
         )}
         {screen.name === "session" && !active && <MissingNotice onHome={() => setScreen({ name: "home" })} />}
         {screen.name === "report" && result && (

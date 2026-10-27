@@ -10,10 +10,10 @@ export type Mission =
   | { kind: "simulado"; title: string; reason: string }
 
 /** Próximo passo recomendado, derivado apenas do histórico real. */
-export function nextMission(history: SessionResult[], bank: Question[]): Mission | undefined {
+export function nextMission(history: SessionResult[], bank: Question[], now: number): Mission | undefined {
   if (history.length === 0) return undefined
   const known = new Set(bank.map((question) => question.id))
-  const queue = reviewQueue(history).filter((item) => known.has(item.questionId))
+  const queue = reviewQueue(history, now).filter((item) => known.has(item.questionId))
   const top = queue[0]
   if (top) {
     const selected = queue.slice(0, REVIEW_SIZE)
@@ -46,7 +46,7 @@ export function nextMission(history: SessionResult[], bank: Question[]): Mission
     }
   return {
     kind: "simulado",
-    title: "Simulado com todo o banco",
-    reason: "Você já viu todas as questões disponíveis e não há revisões pendentes. Um simulado mede retenção, mas lembre que são questões repetidas.",
+    title: "Simulado PC-PE",
+    reason: "Você já viu todas as questões e não há revisões vencidas. Um simulado no formato da prova mede retenção e ritmo — lembrando que serão questões repetidas.",
   }
 }
